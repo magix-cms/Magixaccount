@@ -1,0 +1,11 @@
+{
+  "name": "Magixaccount",
+  "version": "1.0.0",
+  "description": "Système universel de gestion des comptes membres et de l'espace client.",
+  "author": "Magix CMS",
+  "type": "hybrid",
+  "has_config": true,
+  "default_hooks": [
+    "displayHeaderUser"
+  ]
+}
