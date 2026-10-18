@@ -113,4 +113,33 @@ class MagixaccountDb extends BaseDb
         $qb->delete('mc_account')->where('id_account = :id', ['id' => $idAccount]);
         return $this->executeDelete($qb);
     }
+
+    /**
+     * Récupère la configuration du plugin
+     */
+    public function getConfig(): array
+    {
+        $qb = new QueryBuilder();
+        $qb->select('*')->from('mc_magixaccount_config')->limit(1);
+        $res = $this->executeRow($qb);
+
+        return $res ?: [];
+    }
+
+    /**
+     * Sauvegarde la configuration
+     */
+    public function saveConfig(array $data): bool
+    {
+        $config = $this->getConfig();
+        $qb = new QueryBuilder();
+
+        if (isset($config['id_config'])) {
+            $qb->update('mc_magixaccount_config', $data);
+            return $this->executeUpdate($qb) !== false;
+        } else {
+            $qb->insert('mc_magixaccount_config', $data);
+            return $this->executeInsert($qb);
+        }
+    }
 }

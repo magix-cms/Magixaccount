@@ -63,7 +63,7 @@ class FrontendController extends BaseController
 
         // --- AFFICHAGE DES VUES (GET) ---
         // NOUVEAU : Ajout de 'forgot' et 'reset' à la liste blanche
-        $allowedActions = ['login', 'register', 'profile', 'logout', 'forgot', 'reset'];
+        $allowedActions = ['login', 'register', 'profile', 'logout', 'forgot', 'reset', 'social_login', 'social_callback'];
 
         if (in_array($action, $allowedActions) && method_exists($this, $action)) {
             $this->$action();
@@ -95,6 +95,10 @@ class FrontendController extends BaseController
         if ($this->sessionManager->get('id_account')) {
             $this->redirect('/'.$this->currentLang['iso_lang'].'/magixaccount/profile');
         }
+
+        // NOUVEAU : On injecte la configuration pour afficher (ou non) les boutons
+        $this->view->assign('social_config', $this->db->getSocialConfig());
+
         $this->view->display('login.tpl');
     }
 
@@ -401,6 +405,150 @@ class FrontendController extends BaseController
             ]);
         } else {
             $this->jsonResponse(false, 'Une erreur technique est survenue.');
+        }
+    }
+
+    /**
+     * Initialise la configuration Hybridauth
+     */
+    private function getHybridauthConfig(): array
+    {
+        $dbConfig = $this->db->getSocialConfig();
+        $baseUrl = rtrim((string)$this->view->getTemplateVars('site_url'), '/');
+        $iso = $this->currentLang['iso_lang'] ?? 'fr';
+
+        return [
+            'callback' => $baseUrl . '/' . $iso . '/magixaccount/social_callback',
+            'providers' => [
+                'Google' => [
+                    'enabled' => !empty($dbConfig['google_enabled']),
+                    'keys'    => [
+                        'id'     => $dbConfig['google_client_id'] ?? '',
+                        'secret' => $dbConfig['google_client_secret'] ?? ''
+                    ],
+                ],
+                'LinkedIn' => [
+                    'enabled' => !empty($dbConfig['linkedin_enabled']),
+                    'keys'    => [
+                        'id'     => $dbConfig['linkedin_client_id'] ?? '',
+                        'secret' => $dbConfig['linkedin_client_secret'] ?? ''
+                    ],
+                ]
+            ]
+        ];
+    }
+
+    /**
+     * Redirige l'utilisateur vers Google ou LinkedIn
+     */
+    private function social_login(): void
+    {
+        $provider = $_GET['provider'] ?? '';
+
+        if (empty($provider)) {
+            $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/login');
+        }
+
+        try {
+            // Autoload Composer requis (le chemin dépend de votre structure exacte)
+            $autoloadPath = ROOT_DIR . 'plugins/Magixaccount/vendor/autoload.php';
+            if (!file_exists($autoloadPath)) {
+                throw new \Exception("Librairie Hybridauth manquante. Avez-vous lancé 'composer require hybridauth/hybridauth' ?");
+            }
+            require_once $autoloadPath;
+
+            $config = $this->getHybridauthConfig();
+            $hybridauth = new \Hybridauth\Hybridauth($config);
+
+            // Cette ligne redirige automatiquement vers Google/LinkedIn
+            $adapter = $hybridauth->authenticate($provider);
+
+            // On ne devrait jamais arriver ici si la redirection réussit
+            $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/social_callback?provider=' . $provider);
+
+        } catch (\Exception $e) {
+            $this->logger->log("Erreur Social Login Init: " . $e->getMessage(), "error");
+            $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/login?error=social_init');
+        }
+    }
+
+    /**
+     * Route de retour depuis Google/LinkedIn
+     */
+    private function social_callback(): void
+    {
+        $provider = $_GET['provider'] ?? '';
+
+        if (empty($provider)) {
+            $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/login');
+        }
+
+        try {
+            require_once ROOT_DIR . 'plugins/Magixaccount/vendors/vendor/autoload.php';
+
+            $config = $this->getHybridauthConfig();
+            $hybridauth = new \Hybridauth\Hybridauth($config);
+
+            // On récupère la connexion établie
+            $adapter = $hybridauth->authenticate($provider);
+            $userProfile = $adapter->getUserProfile();
+
+            // Déconnexion d'Hybridauth (on gère la session nous-mêmes avec Magix)
+            $adapter->disconnect();
+
+            $providerUid = $userProfile->identifier;
+            $email = $userProfile->email ?? '';
+            $firstName = $userProfile->firstName ?? '';
+            $lastName = $userProfile->lastName ?? '';
+
+            if (empty($email)) {
+                throw new \Exception("L'e-mail est requis mais non fourni par le réseau social.");
+            }
+
+            // 1. L'utilisateur a-t-il déjà connecté ce réseau social ?
+            $user = $this->db->getUserBySocialProvider($provider, $providerUid);
+
+            if (!$user) {
+                // 2. L'email existe-t-il déjà pour un compte classique ?
+                $user = $this->db->getUserByEmail($email);
+
+                if ($user) {
+                    // Le compte classique existe, on lie simplement le réseau social
+                    $this->db->linkSocialAccount((int)$user['id_account'], $provider, $providerUid);
+                } else {
+                    // 3. Nouveau visiteur absolu -> Création d'un compte à la volée !
+                    // Mot de passe vide puisqu'il se connectera toujours via le réseau social
+                    $newAccountData = [
+                        'email'         => $email,
+                        'password_hash' => null,
+                        'firstname'     => $firstName,
+                        'lastname'      => $lastName
+                    ];
+
+                    if ($this->db->createAccount($newAccountData)) {
+                        // On relit la base pour avoir l'ID fraîchement créé
+                        $user = $this->db->getUserByEmail($email);
+                        $this->db->linkSocialAccount((int)$user['id_account'], $provider, $providerUid);
+                    } else {
+                        throw new \Exception("Impossible de créer le compte Magix.");
+                    }
+                }
+            }
+
+            // 4. On connecte le client via le système Magix
+            if ((int)$user['is_active'] === 0) {
+                $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/login?error=account_disabled');
+            }
+
+            $this->sessionManager->regenerate();
+            $this->sessionManager->set('id_account', (int)$user['id_account']);
+            $this->sessionManager->set('email', $user['email']);
+
+            $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/profile');
+
+        } catch (\Exception $e) {
+            $this->logger->log("Erreur Social Callback ($provider): " . $e->getMessage(), "error");
+            $this->redirect('/' . $this->currentLang['iso_lang'] . '/magixaccount/login?error=social_failed');
         }
     }
 }

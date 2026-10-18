@@ -30,8 +30,19 @@ class BackendController extends BaseController
             $this->processSave();
             return;
         }
+
         if ($action === 'delete') {
             $this->processDelete();
+            return;
+        }
+
+        if ($action === 'config') {
+            $this->config();
+            return;
+        }
+
+        if ($action === 'save_config' && Request::isMethod('POST')) {
+            $this->processSaveConfig();
             return;
         }
 
@@ -200,5 +211,54 @@ class BackendController extends BaseController
 
         echo $this->json->encode(['success' => false, 'message' => 'Aucun compte sélectionné.']);
         exit;
+    }
+    /**
+     * Page de configuration (Clés API Google, LinkedIn, etc.)
+     */
+    public function config(): void
+    {
+        $db = new MagixaccountDb();
+        $this->view->assign([
+            'config'    => $db->getConfig(),
+            'hashtoken' => $this->session->getToken()
+        ]);
+        $this->view->display('config.tpl');
+    }
+
+    /**
+     * Sauvegarde de la configuration
+     */
+    /**
+     * Sauvegarde de la configuration
+     */
+    private function processSaveConfig(): void
+    {
+        if (ob_get_length()) ob_clean();
+
+        $token = $_POST['hashtoken'] ?? '';
+        if (!$this->session->validateToken($token)) {
+            $this->jsonResponse(false, 'Session expirée.');
+        }
+
+        $data = [
+            'google_enabled'         => isset($_POST['google_enabled']) ? 1 : 0,
+            'google_client_id'       => FormTool::simpleClean($_POST['google_client_id'] ?? ''),
+            'google_client_secret'   => FormTool::simpleClean($_POST['google_client_secret'] ?? ''), // Modifié : pas de simpleClean sur un mot de passe car ça peut altérer des caractères spéciaux valides
+            'linkedin_enabled'       => isset($_POST['linkedin_enabled']) ? 1 : 0,
+            'linkedin_client_id'     => FormTool::simpleClean($_POST['linkedin_client_id'] ?? ''),
+            'linkedin_client_secret' => FormTool::simpleClean($_POST['linkedin_client_secret'] ?? '') // Idem
+        ];
+
+        // Remplacement de FormTool::simpleClean pour les "Secret" par trim().
+        // Les Client Secrets contiennent souvent des tirets, underscores ou caractères spéciaux que simpleClean pourrait filtrer.
+        $data['google_client_secret'] = trim($_POST['google_client_secret'] ?? '');
+        $data['linkedin_client_secret'] = trim($_POST['linkedin_client_secret'] ?? '');
+
+        $db = new MagixaccountDb();
+        if ($db->saveConfig($data)) {
+            $this->jsonResponse(true, 'Configuration enregistrée avec succès.', ['type' => 'update']);
+        } else {
+            $this->jsonResponse(false, 'Erreur lors de l\'enregistrement de la configuration.');
+        }
     }
 }

@@ -7,10 +7,14 @@
         <h1 class="h3 mb-0 text-gray-800">
             <i class="bi bi-people me-2"></i> Gestion des membres
         </h1>
-        {* CORRECTION : Lien classique vers l'action add *}
-        <a href="index.php?controller=Magixaccount&action=add" class="btn btn-primary">
-            <i class="bi bi-person-plus me-1"></i> Ajouter un membre
-        </a>
+        <div>
+            <a href="index.php?controller=Magixaccount&action=config" class="btn btn-outline-secondary me-2">
+                <i class="bi bi-gear me-1"></i> Configuration
+            </a>
+            <a href="index.php?controller=Magixaccount&action=add" class="btn btn-primary">
+                <i class="bi bi-person-plus me-1"></i> Ajouter un membre
+            </a>
+        </div>
     </div>
 
     <div class="card shadow-sm border-0 mb-4">

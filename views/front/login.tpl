@@ -46,6 +46,29 @@
                             </button>
                         </div>
 
+                        {* --- NOUVEAU : BOUTONS SOCIAL LOGIN --- *}
+                        {if isset($social_config) && ($social_config.google_enabled == 1 || $social_config.linkedin_enabled == 1)}
+                            <div class="position-relative mt-4 mb-4">
+                                <hr class="text-muted opacity-25">
+                                <span class="position-absolute top-50 start-50 translate-middle bg-body px-2 small text-muted">OU</span>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                {if $social_config.google_enabled == 1}
+                                    <a href="{$base_url}{$current_lang.iso_lang}/magixaccount/social_login?provider=Google" class="btn btn-outline-dark fw-bold border-2 d-flex align-items-center justify-content-center">
+                                        <i class="bi bi-google text-danger fs-5 me-2"></i> Continuer avec Google
+                                    </a>
+                                {/if}
+
+                                {if $social_config.linkedin_enabled == 1}
+                                    <a href="{$base_url}{$current_lang.iso_lang}/magixaccount/social_login?provider=LinkedIn" class="btn btn-outline-dark fw-bold border-2 d-flex align-items-center justify-content-center" style="color: #0A66C2;">
+                                        <i class="bi bi-linkedin fs-5 me-2"></i> Continuer avec LinkedIn
+                                    </a>
+                                {/if}
+                            </div>
+                        {/if}
+                        {* --- FIN SOCIAL LOGIN --- *}
+
                         <div class="text-center mt-4">
                             <p class="mb-0 text-muted">Pas encore de compte ? <a href="{$base_url}{$current_lang.iso_lang}/magixaccount/register" class="text-decoration-none fw-bold">S'inscrire</a></p>
                         </div>

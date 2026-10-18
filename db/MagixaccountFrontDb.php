@@ -205,4 +205,46 @@ class MagixaccountFrontDb extends BaseDb
         }
         return false;
     }
+
+    /**
+     * Récupère la configuration des réseaux sociaux
+     */
+    public function getSocialConfig(): array
+    {
+        $qb = new QueryBuilder();
+        $qb->select('*')->from('mc_magixaccount_config')->limit(1);
+        return $this->executeRow($qb) ?: [];
+    }
+
+    /**
+     * Cherche un utilisateur via son ID réseau social (Google, LinkedIn...)
+     */
+    public function getUserBySocialProvider(string $provider, string $providerUid): array
+    {
+        $qb = new QueryBuilder();
+        $qb->select('a.*')
+            ->from('mc_account', 'a')
+            ->join('mc_account_social', 's', 'a.id_account = s.id_account')
+            ->where('s.provider = :provider AND s.provider_uid = :uid', [
+                'provider' => $provider,
+                'uid'      => $providerUid
+            ])
+            ->limit(1);
+
+        return $this->executeRow($qb) ?: [];
+    }
+
+    /**
+     * Lie un compte réseau social à un compte Magix existant
+     */
+    public function linkSocialAccount(int $idAccount, string $provider, string $providerUid): bool
+    {
+        $qb = new QueryBuilder();
+        $qb->insert('mc_account_social', [
+            'id_account'   => $idAccount,
+            'provider'     => $provider,
+            'provider_uid' => $providerUid
+        ]);
+        return $this->executeInsert($qb);
+    }
 }
